@@ -138,7 +138,7 @@ router.post("/msg", async function (req, res) {
           const messageData = await sendMessageToUsers(batchPayload);
           const sentMessageData = {
             message: attachment,
-            ...messageData.data.messages[0],
+            ...messageData.data,
           };
           output.push(sentMessageData);
         } else {
@@ -149,7 +149,7 @@ router.post("/msg", async function (req, res) {
           const messageData = await sendMessageToUsers(batchPayload);
           const sentMessageData = {
             message: attachment.text,
-            ...messageData.data.messages[0],
+            ...messageData.data,
           };
           output.push(sentMessageData);
         }
