@@ -75,7 +75,6 @@ async function sendMessageToUsers(messageObj) {
     }
 
     payload["message"] = JSON.stringify(payload["message"]);
-    console.log(querystring.stringify(payload));
     return await BaseAxios.post("/msg", querystring.stringify(payload));
   } catch (exception) {
     console.error(exception);
