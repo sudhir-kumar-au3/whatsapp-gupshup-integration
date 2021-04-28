@@ -4,7 +4,9 @@ const Axios = require("axios").default;
 const querystring = require("querystring");
 const fileType = require("file-type");
 require("dotenv").config();
-const BaseAxios = Axios.create({
+const fetch = require("node-fetch");
+
+const BaseAxiosConfigs = {
   baseURL: "https://api.gupshup.io/sm/api/v1",
   headers: {
     accept: "application/json, text/plain, */*",
@@ -13,8 +15,9 @@ const BaseAxios = Axios.create({
     "Cache-Control": "no-cache",
     "cache-control": "no-cache",
   },
-});
+};
 
+// get buffer data for media attachments
 async function getFileBuffer(url, args) {
   return new Promise((resolve, reject) => {
     try {
@@ -32,16 +35,23 @@ async function getFileBuffer(url, args) {
 }
 
 async function sendMessageToUsers(messageObj) {
+  /* -------------------------for sending text messages------------------------- */
   // messageObj = {
-  //   // If you need to send media, place them in attachment key
-  //   attachment: {
-  //     url: 'your media URL',
-  //     previewUrl: 'your media preview URL',
-  //     originalUrl: 'your media original URL',
-  //   },
   //   message: "Your text message or caption to medias",
-  //   to: 'RECIPIENTS_WHATSAPP_NUMBER'
+  //   to: '<RECIPIENTS_whatsapp_NUMBER>'
   // }
+
+  /*--------------------------for sending media files----------------------------*/
+  //   // If you need to send media, place them in attachment key
+  // messageObj = {
+  //   attachment: {
+  //     url: "your media URL",
+  //     previewUrl: "your media preview URL", (required if media is image)
+  //     originalUrl: "your media original URL",(required if media is image)
+  //     text:"image caption if any *(optional)"
+  //   },
+  //   to: "<RECIPIENTS_whatsapp_NUMBER>";
+  // };
 
   try {
     const payload = {
@@ -53,8 +63,11 @@ async function sendMessageToUsers(messageObj) {
 
     if (messageObj.attachment) {
       const fileBuffer = await getFileBuffer(messageObj.attachment.url);
+      // identify type of attached media
+      let typeOfFile = (await fileType.fromBuffer(fileBuffer)).mime.split(
+        "/"
+      )[0];
 
-      let typeOfFile = fileType(fileBuffer).mime.split("/")[0];
       if (!["image", "video", "audio"].includes(typeOfFile)) {
         typeOfFile = "file";
       }
@@ -75,7 +88,10 @@ async function sendMessageToUsers(messageObj) {
     }
 
     payload["message"] = JSON.stringify(payload["message"]);
-    return await BaseAxios.post("/msg", querystring.stringify(payload));
+    return await Axios.create(BaseAxiosConfigs).post(
+      "/msg",
+      querystring.stringify(payload)
+    );
   } catch (exception) {
     console.error(exception);
     return exception;
@@ -87,13 +103,43 @@ router.get("/", function (req, res, next) {
   res.render("index", { title: "Express" });
 });
 
-// Route for Gupshup Inbound Messages
-router.post("/callback", function (req, res) {
-  const { botname, messageobj } = req.body;
-  console.log("App Name: ", botname);
-  console.log("Message Object: ", JSON.parse(messageobj));
-  // console.log(data.text);
-  res.sendStatus(200);
+// Route for Gupshup Inbound Messages (callback webhook)
+router.post("/callback", async function (req, res) {
+  res.end();
+  /*-----------------------revert with automated responses-------------------*/
+  // sample automated replies
+  let { payload, type } = req.body;
+  if (type === "message" && payload.payload) {
+    let body = {};
+    let lower = payload.type.toLowerCase();
+    switch (lower) {
+      case "image":
+        body = {
+          attachment: {
+            url: payload.payload.url,
+            originalUrl: payload.payload.url,
+            text: "Echo - image received",
+          },
+        };
+        break;
+      case "location":
+        body = {
+          message: `Echo - Longitude: ${payload.payload.longitude} and Latitude: ${payload.payload.latitude}`,
+        };
+        break;
+      default:
+        body = {
+          message: "Echo - " + payload.payload.text,
+        };
+    }
+    body["to"] = payload.source;
+    await sendMessageToUsers(body);
+    /*-----------------------------------------------------------------------------*/
+  } else if (payload.type === "failed") {
+    console.log({ "failure log": payload.payload });
+  } else {
+    console.log(`Ignored Message Type:${type}`);
+  }
 });
 
 // Route for Gupshup Outbound Messages
@@ -105,16 +151,15 @@ router.get("/msg", async function (req, res) {
     destination: "917337416428",
     message: "918587099540",
   };
-  const gupshupResponse = await BaseAxios.post(
+  const gupshupResponse = await Axios.create(BaseAxiosConfigs).post(
     "/msg",
     querystring.stringify(payload)
   );
-
   res.status(200).send(gupshupResponse.data);
 });
 
 // Route for Inbound messages
-// this will send the message to your customers through gupshup API
+// this will send the message to users through gupshup API
 router.post("/msg", async function (req, res) {
   const { message, to, attachment } = req.body;
 
@@ -166,7 +211,6 @@ router.post("/msg", async function (req, res) {
       };
       output.push(sentMessageData);
     }
-
     return res.status(200).send(output);
   } catch (exception) {
     console.error(exception);
